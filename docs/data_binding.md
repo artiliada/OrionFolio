@@ -105,7 +105,7 @@ Bind before the document loads if you can, so the first frame does not show lite
 
 Folio supports two ways, and the call site above is identical for both.
 
-**Notified.** If your object implements `INotifyFieldValueChanged`, Folio subscribes per field and only touches the document when a value changes. `UMVVMViewModelBase` implements it.
+**Notified.** If your object implements `INotifyFieldValueChanged` (all Widget Blueprints, for example, by default), Folio subscribes per field and only touches the document when a value changes. `UMVVMViewModelBase` implements it.
 
 **Polled.** Otherwise Folio re-reads every bound property once a frame and updates what changed. Works with any `UObject`, at a little cost per bound field per frame.
 
