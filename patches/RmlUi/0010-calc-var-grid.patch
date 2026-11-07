@@ -1293,7 +1293,7 @@ index 0000000..a7dfa18
 +			return end != lower.c_str();
 +		}
 +
-+		static PropertyParser* parser = StyleSheetSpecification::GetParser("length_percent");
++		PropertyParser* parser = StyleSheetSpecification::GetParser("length_percent");
 +		Property property;
 +		if (!parser || !parser->ParseValue(property, token, ParameterMap()))
 +			return false;
