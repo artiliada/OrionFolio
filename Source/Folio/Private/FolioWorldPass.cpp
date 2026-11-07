@@ -649,7 +649,19 @@ void FFolioWorldPass::AddSurface(FRDGBuilder& GraphBuilder, const FSceneView& Vi
 				Local.MsdfEffect = Draw.Effect;
 				Local.UIOptions = FVector4f(Draw.bStraightAlpha ? 1.0f : 0.0f,
 					Draws->ShouldDecodeSrgb() ? 0.0f : 1.0f, 0.0f, 0.0f);
-				if (Draw.bTiles)
+
+				// The filter rides on the texture, and the draw already names it. Fields are excluded:
+				// a distance field is interpolated by definition, and its page is never marked nearest.
+				const bool bNearest = !bField && Draw.Texture.IsValid()
+					&& Draw.Texture->Filter == TF_Nearest;
+
+				if (bNearest)
+				{
+					Local.UISampler = Draw.bTiles
+						? TStaticSamplerState<SF_Point, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI()
+						: TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+				}
+				else if (Draw.bTiles)
 				{
 					Local.UISampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 				}

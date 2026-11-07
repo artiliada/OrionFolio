@@ -952,26 +952,16 @@ TSharedPtr<FSlateDynamicImageBrush> FFolioRenderInterface::MakeDynamicBrush(cons
 }
 
 Rml::TextureHandle FFolioRenderInterface::RegisterPixels(const void* Bgra, const FIntPoint Size,
-	FSpareBake* Spare)
+	FSpareBake* Spare, const bool bNearest)
 {
 	const Rml::TextureHandle Handle = NextHandle++;
 
-	TSharedPtr<FSlateDynamicImageBrush> Brush = MakeDynamicBrush(Spare
-		? Spare->Name.ToString()
-		: FString::Printf(TEXT("Folio.Tex.%llu"), static_cast<uint64>(Handle)), Bgra, Size);
-	if (!Brush.IsValid())
-	{
-		return 0;
-	}
-
 	TUniquePtr<FTexture> Entry = MakeUnique<FTexture>();
-	Entry->DynamicBrush = Brush;
-	Entry->Handle = FSlateApplication::Get().GetRenderer()->GetResourceHandle(*Brush);
 
-	// A second copy as a UTexture, because a Slate resource handle is only good on Slate's path. The
-	// recording and layer replays bind an FRHITexture straight off a UTexture, so without this every
-	// generated image - which is every gradient - resolves to nothing and the shader samples white.
-	// That is not a fallback anyone sees as missing: a white quad the size of the element.
+	// The UTexture comes first: the recording and layer replays bind an FRHITexture straight off one,
+	// so an image without it resolves to nothing and the shader samples white - a white quad the size
+	// of the element. For art it also carries the sampler, which is why the Slate handle below wraps
+	// it rather than using a dynamic brush.
 	if (Spare)
 	{
 		RewritePixels(Spare->Texture.Get(), Bgra, Size);
@@ -979,8 +969,11 @@ Rml::TextureHandle FFolioRenderInterface::RegisterPixels(const void* Bgra, const
 	}
 	else if (UTexture2D* Generated = UTexture2D::CreateTransient(Size.X, Size.Y, PF_B8G8R8A8))
 	{
+		// Art keeps the texels it was drawn with, so a sprite may be drawn larger than its own pixels.
+		// A bake is read back at the size it was made for, where a linear tap is the smoother of the
+		// two - and the only one that survives a scaled or rotated element without banding.
 		Generated->SRGB = true;
-		Generated->Filter = TF_Bilinear;
+		Generated->Filter = bNearest ? TF_Nearest : TF_Bilinear;
 		Generated->AddressX = TA_Clamp;
 		Generated->AddressY = TA_Clamp;
 		Generated->NeverStream = true;
@@ -996,6 +989,35 @@ Rml::TextureHandle FFolioRenderInterface::RegisterPixels(const void* Bgra, const
 		// enqueues afterwards, so the texture is always ready by the time the pass runs.
 		Generated->UpdateResource();
 		Entry->Texture.Reset(Generated);
+	}
+
+	// Nearest art has to reach Slate through the texture itself: Slate picks its sampler from a
+	// TextureObject resource's own Filter, and hardcodes bilinear for the native resources a dynamic
+	// image brush provides. Everything else keeps the brush, which costs no UObject and does not
+	// stamp the texture's render time on the render thread every frame.
+	if (bNearest && !Spare && Entry->Texture.IsValid())
+	{
+		Entry->Brush.SetResourceObject(Entry->Texture.Get());
+		Entry->Brush.ImageSize = FVector2f(Size.X, Size.Y);
+		Entry->Brush.DrawAs = ESlateBrushDrawType::Image;
+
+		if (FSlateApplication::IsInitialized())
+		{
+			Entry->Handle = FSlateApplication::Get().GetRenderer()->GetResourceHandle(Entry->Brush);
+		}
+	}
+	else
+	{
+		TSharedPtr<FSlateDynamicImageBrush> Brush = MakeDynamicBrush(Spare
+			? Spare->Name.ToString()
+			: FString::Printf(TEXT("Folio.Tex.%llu"), static_cast<uint64>(Handle)), Bgra, Size);
+		if (!Brush.IsValid())
+		{
+			return 0;
+		}
+
+		Entry->DynamicBrush = Brush;
+		Entry->Handle = FSlateApplication::Get().GetRenderer()->GetResourceHandle(*Brush);
 	}
 
 	Textures.Add(Handle, MoveTemp(Entry));
@@ -1136,7 +1158,11 @@ Rml::TextureHandle FFolioRenderInterface::LoadTexture(Rml::Vector2i& OutDimensio
 		Raw[Index + 2] = static_cast<uint8>((Raw[Index + 2] * Alpha + 127) / 255);
 	}
 
-	return RegisterPixels(Raw.GetData(), Size);
+	// Point sampled, always. Art is authored at its own pixel grid and a document draws it at whatever
+	// size its layout asks for, so a linear tap smears every edge as soon as the two differ - which is
+	// every resolution but the one the art was cut for. Nearest costs nothing at 1:1 and keeps the
+	// blocks square at every other scale; the price is that soft art aliases, and there is no opt-out.
+	return RegisterPixels(Raw.GetData(), Size, nullptr, /*bNearest*/ true);
 }
 
 Rml::TextureHandle FFolioRenderInterface::GenerateTexture(const Rml::Span<const Rml::byte> Source,

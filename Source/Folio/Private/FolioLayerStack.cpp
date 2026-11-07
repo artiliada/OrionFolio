@@ -1347,7 +1347,21 @@ void FFolioLayerStack::Resolve(FLayer& Layer)
 							PassParameters.MsdfEffect = Draw.Effect;
 							PassParameters.UIOptions =
 								FVector4f(Draw.bStraightAlpha ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
-							if (Draw.bTiles)
+
+							// Read off the texture rather than carried on the draw: the filter is a property
+							// of the image, decided once when it was made, and the draw already names it.
+							// Only geometry takes it - a field, a mask or a gradient bake keeps the linear
+							// filter it was created with, whatever its texture happens to say.
+							const bool bNearest = Draw.Kind == FFolioDraw::EKind::Geometry
+								&& Draw.Texture.IsValid() && Draw.Texture->Filter == TF_Nearest;
+
+							if (bNearest)
+							{
+								PassParameters.UISampler = Draw.bTiles
+									? TStaticSamplerState<SF_Point, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI()
+									: TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+							}
+							else if (Draw.bTiles)
 							{
 								PassParameters.UISampler =
 									TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();

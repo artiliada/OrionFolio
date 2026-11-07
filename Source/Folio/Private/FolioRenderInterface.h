@@ -313,10 +313,17 @@ private:
 	static TSharedPtr<struct FSlateDynamicImageBrush> MakeDynamicBrush(const FString& Name, const void* Bgra,
 		FIntPoint Size);
 
-	/** Registers decoded bytes as a texture without creating a UObject for them. */
+	/** Registers premultiplied BGRA bytes as an image texture, and as a UTexture for the replays. */
 	struct FSpareBake;
-	/** Spare, when given, supplies the texture and Slate name to rewrite instead of making new ones. */
-	Rml::TextureHandle RegisterPixels(const void* Bgra, FIntPoint Size, FSpareBake* Spare = nullptr);
+	/**
+	 * Spare, when given, supplies the texture and Slate name to rewrite instead of making new ones.
+	 *
+	 * bNearest samples the texture pointwise, for art drawn at a size its pixels were not authored
+	 * for. Only file art asks for it: a gradient or a shader effect is baked at the size it is drawn
+	 * at and read back as a smooth ramp, and a point sample would band it.
+	 */
+	Rml::TextureHandle RegisterPixels(const void* Bgra, FIntPoint Size, FSpareBake* Spare = nullptr,
+		bool bNearest = false);
 	static void RewritePixels(UTexture2D* Texture, const void* Bgra, FIntPoint Size);
 
 	/** Registers a baked sheet as a field page if it has a sidecar. Zero if it is ordinary art. */

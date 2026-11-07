@@ -112,6 +112,21 @@ std::string NamedTextureOf(const std::string& source)
 	return source.substr(scheme.size());
 }
 
+/**
+ * Point samples a texture that has just been created.
+ *
+ * RmlUi's GL3 backend creates every texture with a linear filter and offers no seam to choose
+ * another, so a sprite drawn larger than its own pixels is averaged: the exact thing the engine
+ * side avoids by marking the texture nearest. Handles there are raw GL texture names.
+ */
+void SetNearestFilter(const Rml::TextureHandle handle)
+{
+	glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(handle));
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 } // namespace
 
 PreviewRenderInterface::PreviewRenderInterface(Diagnostics& in_diagnostics, MissingAssets& in_missing_assets)
@@ -132,8 +147,10 @@ Rml::TextureHandle PreviewRenderInterface::LoadTexture(Rml::Vector2i& texture_di
 		if (LoadPng(fallback, pixels, size))
 		{
 			texture_dimensions = size;
-			return RenderInterface_GL3::GenerateTexture(
+			const Rml::TextureHandle stand_in = RenderInterface_GL3::GenerateTexture(
 				Rml::Span<const Rml::byte>(pixels.data(), pixels.size()), size);
+			SetNearestFilter(stand_in);
+			return stand_in;
 		}
 
 		if (const auto it = placeholder_textures.find(named); it != placeholder_textures.end())
@@ -179,12 +196,15 @@ Rml::TextureHandle PreviewRenderInterface::LoadTexture(Rml::Vector2i& texture_di
 					return field;
 			}
 
-			return RenderInterface_GL3::GenerateTexture(
+			const Rml::TextureHandle art = RenderInterface_GL3::GenerateTexture(
 				Rml::Span<const Rml::byte>(pixels.data(), pixels.size()), size);
+			SetNearestFilter(art);
+			return art;
 		}
 	}
 	else if (const Rml::TextureHandle handle = RenderInterface_GL3::LoadTexture(texture_dimensions, source))
 	{
+		SetNearestFilter(handle);
 		return handle;
 	}
 
